@@ -6,12 +6,12 @@ COPY src /home/perplexica/src
 COPY tsconfig.json /home/perplexica/
 COPY drizzle.config.ts /home/perplexica/
 COPY package.json /home/perplexica/
-COPY yarn.lock /home/perplexica/
+COPY package-lock.json /home/perplexica/
 
 RUN mkdir /home/perplexica/data
 RUN mkdir /home/perplexica/uploads
 
-RUN yarn install --frozen-lockfile --network-timeout 600000
-RUN yarn build
+RUN npm ci --network-timeout 600000
+RUN npm run build
 
-CMD ["yarn", "start"]
+CMD ["npm", "start"]

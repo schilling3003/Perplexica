@@ -5,6 +5,7 @@ import MessageInput from './MessageInput';
 import { File, Message } from './ChatWindow';
 import MessageBox from './MessageBox';
 import MessageBoxLoading from './MessageBoxLoading';
+import type { MessageInputProps } from '../types';
 
 const Chat = ({
   loading,
@@ -16,9 +17,11 @@ const Chat = ({
   setFileIds,
   files,
   setFiles,
+  focusMode = '',
+  optimizationMode = '',
 }: {
   messages: Message[];
-  sendMessage: (message: string) => void;
+  sendMessage: MessageInputProps['sendMessage'];
   loading: boolean;
   messageAppeared: boolean;
   rewrite: (messageId: string) => void;
@@ -26,6 +29,8 @@ const Chat = ({
   setFileIds: (fileIds: string[]) => void;
   files: File[];
   setFiles: (files: File[]) => void;
+  focusMode?: string;
+  optimizationMode?: string;
 }) => {
   const [dividerWidth, setDividerWidth] = useState(0);
   const dividerRef = useRef<HTMLDivElement | null>(null);
@@ -39,17 +44,12 @@ const Chat = ({
     };
 
     updateDividerWidth();
-
     window.addEventListener('resize', updateDividerWidth);
-
-    return () => {
-      window.removeEventListener('resize', updateDividerWidth);
-    };
-  });
+    return () => window.removeEventListener('resize', updateDividerWidth);
+  }, []);
 
   useEffect(() => {
     messageEnd.current?.scrollIntoView({ behavior: 'smooth' });
-
     if (messages.length === 1) {
       document.title = `${messages[0].content.substring(0, 30)} - Perplexica`;
     }
@@ -59,11 +59,9 @@ const Chat = ({
     <div className="flex flex-col space-y-6 pt-8 pb-44 lg:pb-32 sm:mx-4 md:mx-8">
       {messages.map((msg, i) => {
         const isLast = i === messages.length - 1;
-
         return (
           <Fragment key={msg.messageId}>
             <MessageBox
-              key={i}
               message={msg}
               messageIndex={i}
               history={messages}
@@ -71,7 +69,12 @@ const Chat = ({
               dividerRef={isLast ? dividerRef : undefined}
               isLast={isLast}
               rewrite={rewrite}
-              sendMessage={sendMessage}
+              sendMessage={(message: string) => sendMessage({
+                query: message,
+                focusMode,
+                optimizationMode,
+                history: messages.map(m => [m.role === 'user' ? 'human' : 'assistant', m.content])
+              })}
             />
             {!isLast && msg.role === 'assistant' && (
               <div className="h-px w-full bg-light-secondary dark:bg-dark-secondary" />
@@ -89,10 +92,12 @@ const Chat = ({
           <MessageInput
             loading={loading}
             sendMessage={sendMessage}
-            fileIds={fileIds}
-            setFileIds={setFileIds}
-            files={files}
-            setFiles={setFiles}
+            focusMode={focusMode}
+            optimizationMode={optimizationMode}
+            messages={messages.map(msg => ({
+              role: msg.role,
+              content: msg.content
+            }))}
           />
         </div>
       )}

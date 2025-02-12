@@ -1,4 +1,5 @@
 import winston from 'winston';
+import { EventEmitter } from 'events';
 
 const logger = winston.createLogger({
   level: 'info',
@@ -19,4 +20,12 @@ const logger = winston.createLogger({
   ],
 });
 
+export class EventLogger extends EventEmitter {
+  emit(event: string | symbol, ...args: any[]): boolean {
+    logger.info(`Event emitted: ${String(event)}`, { args });
+    return super.emit(event, ...args);
+  }
+}
+
+export const eventEmitter = new EventLogger();
 export default logger;

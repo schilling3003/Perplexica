@@ -21,7 +21,7 @@ import { searchSearxng } from '../lib/searxng';
 import path from 'path';
 import fs from 'fs';
 import computeSimilarity from '../utils/computeSimilarity';
-import formatChatHistoryAsString from '../utils/formatHistory';
+import { formatChatHistoryAsString } from '../utils/formatHistory';
 import eventEmitter from 'events';
 import { StreamEvent } from '@langchain/core/tracers/log_stream';
 import { IterableReadableStream } from '@langchain/core/utils/stream';

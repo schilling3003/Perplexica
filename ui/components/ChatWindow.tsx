@@ -467,7 +467,15 @@ const ChatWindow = ({ id }: { id?: string }) => {
     }
   }, [isMessagesLoaded, isWSReady]);
 
-  const sendMessage = async (message: string, messageId?: string) => {
+  const sendMessage = async (
+    messageOrData: string | { 
+      query: string; 
+      focusMode: string; 
+      optimizationMode: string; 
+      history: [string, string][];
+    },
+    messageId?: string
+  ) => {
     if (loading) return;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       toast.error('Cannot send message while disconnected');
@@ -480,6 +488,13 @@ const ChatWindow = ({ id }: { id?: string }) => {
     let sources: Document[] | undefined = undefined;
     let recievedMessage = '';
     let added = false;
+    let message: string;
+
+    if (typeof messageOrData === 'string') {
+      message = messageOrData;
+    } else {
+      message = messageOrData.query;
+    }
 
     messageId = messageId ?? crypto.randomBytes(7).toString('hex');
 
@@ -492,9 +507,11 @@ const ChatWindow = ({ id }: { id?: string }) => {
           content: message,
         },
         files: fileIds,
-        focusMode: focusMode,
-        optimizationMode: optimizationMode,
-        history: [...chatHistory, ['human', message]],
+        focusMode: typeof messageOrData === 'string' ? focusMode : messageOrData.focusMode,
+        optimizationMode: typeof messageOrData === 'string' ? optimizationMode : messageOrData.optimizationMode,
+        history: typeof messageOrData === 'string' 
+          ? [...chatHistory, ['human', message]]
+          : messageOrData.history,
       }),
     );
 

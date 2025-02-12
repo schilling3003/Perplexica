@@ -11,6 +11,8 @@ import { getFileDetails } from '../utils/files';
 import MetaSearchAgent, {
   MetaSearchAgentType,
 } from '../search/metaSearchAgent';
+import RestaurantSearchAgent from '../chains/restaurantSearchAgent';
+import { RestaurantSearchInput } from '../types';
 import prompts from '../prompts';
 
 type Message = {
@@ -28,7 +30,12 @@ type WSMessage = {
   files: Array<string>;
 };
 
-export const searchHandlers = {
+type EventData = {
+  type: 'response' | 'status' | 'error' | 'sources';
+  data: string;
+};
+
+export const searchHandlers: Record<string, MetaSearchAgentType> = {
   webSearch: new MetaSearchAgent({
     activeEngines: [],
     queryGeneratorPrompt: prompts.webSearchRetrieverPrompt,
@@ -83,6 +90,7 @@ export const searchHandlers = {
     searchWeb: true,
     summarizer: false,
   }),
+  restaurantSearch: new RestaurantSearchAgent(),
 };
 
 const handleEmitterEvents = (
@@ -94,26 +102,39 @@ const handleEmitterEvents = (
   let recievedMessage = '';
   let sources = [];
 
-  emitter.on('data', (data) => {
-    const parsedData = JSON.parse(data);
-    if (parsedData.type === 'response') {
+  emitter.on('data', (eventData) => {
+    try {
+      const rawData = typeof eventData === 'string' ? JSON.parse(eventData) : eventData;
+      if (rawData.type === 'response' || rawData.type === 'status') {
+        ws.send(
+          JSON.stringify({
+            type: rawData.type,
+            data: rawData.data,
+            messageId: messageId,
+          }),
+        );
+        if (rawData.type === 'response') {
+          recievedMessage += rawData.data;
+        }
+      } else if (rawData.type === 'sources') {
+        ws.send(
+          JSON.stringify({
+            type: 'sources',
+            data: rawData.data,
+            messageId: messageId,
+          }),
+        );
+        sources = typeof rawData.data === 'string' ? JSON.parse(rawData.data) : rawData.data;
+      }
+    } catch (error) {
+      logger.error('Error handling emitter event:', error);
       ws.send(
         JSON.stringify({
-          type: 'message',
-          data: parsedData.data,
+          type: 'error',
+          data: 'Error processing response',
           messageId: messageId,
         }),
       );
-      recievedMessage += parsedData.data;
-    } else if (parsedData.type === 'sources') {
-      ws.send(
-        JSON.stringify({
-          type: 'sources',
-          data: parsedData.data,
-          messageId: messageId,
-        }),
-      );
-      sources = parsedData.data;
     }
   });
   emitter.on('end', () => {
@@ -154,15 +175,6 @@ export const handleMessage = async (
     const parsedWSMessage = JSON.parse(message) as WSMessage;
     const parsedMessage = parsedWSMessage.message;
 
-    if (parsedWSMessage.files.length > 0) {
-      /* TODO: Implement uploads in other classes/single meta class system*/
-      parsedWSMessage.focusMode = 'webSearch';
-    }
-
-    const humanMessageId =
-      parsedMessage.messageId ?? crypto.randomBytes(7).toString('hex');
-    const aiMessageId = crypto.randomBytes(7).toString('hex');
-
     if (!parsedMessage.content)
       return ws.send(
         JSON.stringify({
@@ -173,34 +185,61 @@ export const handleMessage = async (
       );
 
     const history: BaseMessage[] = parsedWSMessage.history.map((msg) => {
-      if (msg[0] === 'human') {
-        return new HumanMessage({
-          content: msg[1],
-        });
-      } else {
-        return new AIMessage({
-          content: msg[1],
-        });
-      }
+      return msg[0] === 'human' ? new HumanMessage(msg[1]) : new AIMessage(msg[1]);
     });
 
     if (parsedWSMessage.type === 'message') {
-      const handler: MetaSearchAgentType =
-        searchHandlers[parsedWSMessage.focusMode];
+      const handler: MetaSearchAgentType = searchHandlers[parsedWSMessage.focusMode];
 
       if (handler) {
         try {
-          const emitter = await handler.searchAndAnswer(
-            parsedMessage.content,
-            history,
-            llm,
-            embeddings,
-            parsedWSMessage.optimizationMode,
-            parsedWSMessage.files,
-          );
+          let emitter: EventEmitter;
+          if (parsedWSMessage.focusMode === 'restaurantSearch') {
+            try {
+              const parsedQuery = JSON.parse(parsedMessage.content);
+              const restaurantInfo: RestaurantSearchInput = {
+                restaurant_name: parsedQuery.restaurantName || parsedQuery.restaurant_name,
+                address: parsedQuery.address
+              };
+              
+              if (!restaurantInfo.restaurant_name || !restaurantInfo.address) {
+                throw new Error('Invalid restaurant search input');
+              }
+              
+              const restaurantAgent = handler as RestaurantSearchAgent;
+              emitter = await restaurantAgent.searchAndEvaluateRestaurant(
+                restaurantInfo,
+                history,
+                llm,
+                embeddings,
+                parsedWSMessage.optimizationMode || 'balanced'
+              );
+            } catch (error) {
+              ws.send(
+                JSON.stringify({
+                  type: 'error',
+                  data: 'Invalid restaurant search input format',
+                  key: 'INVALID_FORMAT',
+                }),
+              );
+              return;
+            }
+          } else {
+            emitter = await handler.searchAndAnswer(
+              parsedMessage.content,
+              history,
+              llm,
+              embeddings,
+              parsedWSMessage.optimizationMode || 'balanced',
+              parsedWSMessage.files || []
+            );
+          }
 
+          // Handle emitter events
+          const aiMessageId = crypto.randomBytes(7).toString('hex');
           handleEmitterEvents(emitter, ws, aiMessageId, parsedMessage.chatId);
 
+          // Save chat history
           const chat = await db.query.chats.findFirst({
             where: eq(chats.id, parsedMessage.chatId),
           });
@@ -218,6 +257,8 @@ export const handleMessage = async (
               .execute();
           }
 
+          // Save user message
+          const humanMessageId = parsedMessage.messageId ?? crypto.randomBytes(7).toString('hex');
           const messageExists = await db.query.messages.findFirst({
             where: eq(messagesSchema.messageId, humanMessageId),
           });
@@ -235,19 +276,16 @@ export const handleMessage = async (
                 }),
               })
               .execute();
-          } else {
-            await db
-              .delete(messagesSchema)
-              .where(
-                and(
-                  gt(messagesSchema.id, messageExists.id),
-                  eq(messagesSchema.chatId, parsedMessage.chatId),
-                ),
-              )
-              .execute();
           }
         } catch (err) {
-          console.log(err);
+          logger.error('Error in message handler:', err);
+          ws.send(
+            JSON.stringify({
+              type: 'error',
+              data: 'Failed to process request',
+              key: 'PROCESSING_ERROR',
+            }),
+          );
         }
       } else {
         ws.send(
