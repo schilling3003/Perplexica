@@ -40,8 +40,8 @@ export const searchHandlers = {
   }),
   restaurantSearch: new MetaSearchAgent({
     activeEngines: [],
-    queryGeneratorPrompt: prompts.restaurantSearchRetrieverPrompt,
-    responsePrompt: prompts.restaurantSearchResponsePrompt,
+    queryGeneratorPrompt: prompts.restaurantInfoRetrieverPrompt,
+    responsePrompt: prompts.restaurantEvaluationPrompt,
     rerank: true,
     rerankThreshold: 0.3,
     searchWeb: true,
