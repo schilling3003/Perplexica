@@ -53,11 +53,17 @@ class RestaurantSearchAgent extends MetaSearchAgent {
     llm: BaseChatModel,
     embeddings: Embeddings,
     optimizationMode: 'speed' | 'balanced' | 'quality',
-    files: string[] = []
+    fileIds: string[] = []
   ): Promise<EventLogger> {
     const emitter = new EventLogger();
     
     try {
+      // If query is empty, just return without doing anything
+      if (!query.trim()) {
+        emitter.emit('end');
+        return emitter;
+      }
+
       const parsedInfo = this.parseRestaurantQuery(query);
       
       // Get initial web search results
@@ -67,7 +73,7 @@ class RestaurantSearchAgent extends MetaSearchAgent {
         llm,
         embeddings,
         optimizationMode,
-        files
+        fileIds
       );
 
       // Forward all events from the parent search agent

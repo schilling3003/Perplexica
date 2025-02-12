@@ -417,6 +417,24 @@ const ChatWindow = ({ id }: { id?: string }) => {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  const handleRestaurantSearch = () => {
+    setFocusMode('restaurantSearch');
+  };
+
+  const handleWebSearch = () => {
+    setFocusMode('webSearch');
+  };
+
+  const validFocusModes = {
+    webSearch: 'webSearch',
+    restaurantSearch: 'restaurantSearch',
+    academicSearch: 'academicSearch',
+    writingAssistant: 'writingAssistant',
+    wolframAlphaSearch: 'wolframAlphaSearch',
+    youtubeSearch: 'youtubeSearch',
+    redditSearch: 'redditSearch',
+  };
+
   useEffect(() => {
     if (
       chatId &&
@@ -467,7 +485,17 @@ const ChatWindow = ({ id }: { id?: string }) => {
     }
   }, [isMessagesLoaded, isWSReady]);
 
-  const sendMessage = async (message: string, messageId?: string) => {
+  const sendMessage = async ({
+    query,
+    focusMode,
+    optimizationMode,
+    history,
+  }: {
+    query: string;
+    focusMode: string;
+    optimizationMode: string;
+    history: [string, string][];
+  }) => {
     if (loading) return;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       toast.error('Cannot send message while disconnected');
@@ -481,28 +509,28 @@ const ChatWindow = ({ id }: { id?: string }) => {
     let recievedMessage = '';
     let added = false;
 
-    messageId = messageId ?? crypto.randomBytes(7).toString('hex');
+    const messageId = crypto.randomBytes(7).toString('hex');
 
     ws.send(
       JSON.stringify({
         type: 'message',
         message: {
-          messageId: messageId,
+          messageId,
           chatId: chatId!,
-          content: message,
+          content: query,
         },
         files: fileIds,
-        focusMode: focusMode,
-        optimizationMode: optimizationMode,
-        history: [...chatHistory, ['human', message]],
+        focusMode,
+        optimizationMode,
+        history: [...chatHistory, ['human', query]],
       }),
     );
 
     setMessages((prevMessages) => [
       ...prevMessages,
       {
-        content: message,
-        messageId: messageId,
+        content: query,
+        messageId,
         chatId: chatId!,
         role: 'user',
         createdAt: new Date(),
@@ -570,7 +598,7 @@ const ChatWindow = ({ id }: { id?: string }) => {
       if (data.type === 'messageEnd') {
         setChatHistory((prevHistory) => [
           ...prevHistory,
-          ['human', message],
+          ['human', query],
           ['assistant', recievedMessage],
         ]);
 

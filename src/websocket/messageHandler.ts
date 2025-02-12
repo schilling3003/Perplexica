@@ -38,6 +38,15 @@ export const searchHandlers = {
     searchWeb: true,
     summarizer: true,
   }),
+  restaurantSearch: new MetaSearchAgent({
+    activeEngines: [],
+    queryGeneratorPrompt: prompts.restaurantSearchRetrieverPrompt,
+    responsePrompt: prompts.restaurantSearchResponsePrompt,
+    rerank: true,
+    rerankThreshold: 0.3,
+    searchWeb: true,
+    summarizer: false,
+  }),
   academicSearch: new MetaSearchAgent({
     activeEngines: ['arxiv', 'google scholar', 'pubmed'],
     queryGeneratorPrompt: prompts.academicSearchRetrieverPrompt,

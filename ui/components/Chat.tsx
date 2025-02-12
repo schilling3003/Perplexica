@@ -35,6 +35,7 @@ const Chat = ({
   const [dividerWidth, setDividerWidth] = useState(0);
   const dividerRef = useRef<HTMLDivElement | null>(null);
   const messageEnd = useRef<HTMLDivElement | null>(null);
+  const [currentFocusMode, setCurrentFocusMode] = useState(focusMode);
 
   useEffect(() => {
     const updateDividerWidth = () => {
@@ -57,6 +58,34 @@ const Chat = ({
 
   return (
     <div className="flex flex-col space-y-6 pt-8 pb-44 lg:pb-32 sm:mx-4 md:mx-8">
+      <div className="flex justify-end space-x-2 mb-4">
+        <button
+          onClick={() => {
+            console.log('Setting focus mode to webSearch');
+            setCurrentFocusMode('webSearch');
+          }}
+          className={`px-4 py-2 rounded-lg ${
+            currentFocusMode === 'webSearch'
+              ? 'bg-blue-500 text-white'
+              : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200'
+          }`}
+        >
+          Web Search
+        </button>
+        <button
+          onClick={() => {
+            console.log('Setting focus mode to restaurantSearch');
+            setCurrentFocusMode('restaurantSearch');
+          }}
+          className={`px-4 py-2 rounded-lg ${
+            currentFocusMode === 'restaurantSearch'
+              ? 'bg-blue-500 text-white'
+              : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200'
+          }`}
+        >
+          Restaurant Search
+        </button>
+      </div>
       {messages.map((msg, i) => {
         const isLast = i === messages.length - 1;
         return (
@@ -92,7 +121,7 @@ const Chat = ({
           <MessageInput
             loading={loading}
             sendMessage={sendMessage}
-            focusMode={focusMode}
+            focusMode={currentFocusMode}
             optimizationMode={optimizationMode}
             messages={messages.map(msg => ({
               role: msg.role,
