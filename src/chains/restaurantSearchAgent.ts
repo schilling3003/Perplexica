@@ -59,7 +59,6 @@ class RestaurantSearchAgent extends MetaSearchAgent {
     
     try {
       const parsedInfo = this.parseRestaurantQuery(query);
-      emitter.emit('data', { type: 'status', data: 'Searching for restaurant information...' });
       
       // Get initial web search results
       const searchEmitter = await super.searchAndAnswer(
@@ -71,30 +70,21 @@ class RestaurantSearchAgent extends MetaSearchAgent {
         files
       );
 
-      // Collect search results synchronously
-      const searchResults = await new Promise<string>((resolve, reject) => {
-        let collectedResults = '';
-        
-        searchEmitter.on('data', (data) => {
-          if (data.type === 'response') {
-            collectedResults += data.data;
-          }
-        });
-
-        searchEmitter.once('end', () => resolve(collectedResults));
-        searchEmitter.once('error', reject);
+      // Forward all events from the parent search agent
+      searchEmitter.on('data', (data) => {
+        emitter.emit('data', data);
       });
 
-      if (!searchResults.trim()) {
-        throw new Error('No information found for the restaurant');
-      }
-
-      emitter.emit('data', { type: 'status', data: 'Analyzing restaurant information...' });
+      // Wait for search to complete
+      await new Promise((resolve, reject) => {
+        searchEmitter.once('end', resolve);
+        searchEmitter.once('error', reject);
+      });
 
       // Process restaurant information
       const infoPrompt = PromptTemplate.fromTemplate(restaurantInfoRetrieverPrompt);
       const formattedInfo = await llm.invoke(await infoPrompt.format({
-        raw_info: searchResults,
+        raw_info: query,
         restaurant_name: parsedInfo.restaurant_name,
         address: parsedInfo.address,
         chat_history: formatChatHistoryAsString(history)
@@ -104,20 +94,25 @@ class RestaurantSearchAgent extends MetaSearchAgent {
       const evaluationPrompt = PromptTemplate.fromTemplate(restaurantEvaluationPrompt);
       const evaluationStream = await llm.stream(await evaluationPrompt.format({
         processed_info: formattedInfo,
-        context: formattedInfo.content // Assuming 'formattedInfo' has a 'content' property that can be used as 'context'
+        context: formattedInfo.content
       }));
 
+      // Stream the evaluation results
       for await (const chunk of evaluationStream) {
-        emitter.emit('data', { type: 'response', data: chunk.content });
+        emitter.emit('data', JSON.stringify({
+          type: 'response',
+          data: chunk.content
+        }));
       }
 
+      emitter.emit('data', JSON.stringify({ type: 'messageEnd' }));
       emitter.emit('end');
       return emitter;
 
     } catch (error) {
       console.error('Error in restaurant search:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to process restaurant search';
-      emitter.emit('error', { type: 'error', data: errorMessage });
+      emitter.emit('data', JSON.stringify({ type: 'error', data: errorMessage }));
       return emitter;
     }
   }
@@ -160,9 +155,10 @@ class RestaurantSearchAgent extends MetaSearchAgent {
     optimizationMode: 'speed' | 'balanced' | 'quality'
   ) {
     const emitter = new EventLogger();
+    let messageId = 0;
     
     try {
-      emitter.emit('data', JSON.stringify({ type: 'status', data: 'Searching for restaurant information...' }));
+      emitter.emit('data', JSON.stringify({ type: 'status', messageId, data: 'Searching for restaurant information...' }));
       
       // Get initial web search results using the base search functionality
       const searchResults = await super.searchAndAnswer(
@@ -192,7 +188,7 @@ class RestaurantSearchAgent extends MetaSearchAgent {
         throw new Error('No information found for the restaurant');
       }
 
-      emitter.emit('data', JSON.stringify({ type: 'status', data: 'Analyzing restaurant information...' }));
+      emitter.emit('data', JSON.stringify({ type: 'status', messageId: ++messageId, data: 'Analyzing restaurant information...' }));
 
       // Process restaurant information with structured chain
       const infoRetrieverChain = await RunnableSequence.from([
@@ -212,7 +208,8 @@ class RestaurantSearchAgent extends MetaSearchAgent {
       // Create and run the evaluation chain with structured data
       const evaluationChain = await RunnableSequence.from([
         async () => ({
-          processed_info: restaurantData
+          processed_info: restaurantData,
+          context: restaurantData
         }),
         PromptTemplate.fromTemplate(restaurantEvaluationPrompt),
         llm,
@@ -222,12 +219,16 @@ class RestaurantSearchAgent extends MetaSearchAgent {
       });
 
       const evaluationResult = await evaluationChain.invoke({});
-      emitter.emit('data', JSON.stringify({ type: 'response', data: evaluationResult }));
+      emitter.emit('data', JSON.stringify({
+        type: 'response',
+        messageId: ++messageId,
+        data: evaluationResult
+      }));
       emitter.emit('end');
       return emitter;
     } catch (error) {
       console.error('Error in restaurant evaluation:', error);
-      emitter.emit('error', JSON.stringify({ type: 'error', data: error instanceof Error ? error.message : 'Failed to evaluate restaurant' }));
+      emitter.emit('error', JSON.stringify({ type: 'error', messageId: ++messageId, data: error instanceof Error ? error.message : 'Failed to evaluate restaurant' }));
       return emitter;
     }
   }

@@ -44,23 +44,27 @@ const MessageBox = ({
 
   useEffect(() => {
     const regex = /\[(\d+)\]/g;
+    
+    // Always set speech message first
+    setSpeechMessage(message.content.replace(regex, ''));
 
+    // Process citations if they exist
     if (
       message.role === 'assistant' &&
       message?.sources &&
       message.sources.length > 0
     ) {
-      return setParsedMessage(
+      setParsedMessage(
         message.content.replace(
           regex,
           (_, number) =>
             `<a href="${message.sources?.[number - 1]?.metadata?.url}" target="_blank" className="bg-light-secondary dark:bg-dark-secondary px-1 rounded ml-1 no-underline text-xs text-black/70 dark:text-white/70 relative">${number}</a>`,
         ),
       );
+    } else {
+      // If no citations, just use the content directly
+      setParsedMessage(message.content);
     }
-
-    setSpeechMessage(message.content.replace(regex, ''));
-    setParsedMessage(message.content);
   }, [message.content, message.sources, message.role]);
 
   const { speechStatus, start, stop } = useSpeech({ text: speechMessage });
