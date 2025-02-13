@@ -38,6 +38,15 @@ export const searchHandlers = {
     searchWeb: true,
     summarizer: true,
   }),
+  restaurantSearch: new MetaSearchAgent({
+    activeEngines: [],
+    queryGeneratorPrompt: prompts.webSearchRetrieverPrompt,
+    responsePrompt: prompts.restaurantEvaluationPrompt,
+    rerank: true,
+    rerankThreshold: 0.3,
+    searchWeb: true,
+    summarizer: false,
+  }),
   academicSearch: new MetaSearchAgent({
     activeEngines: ['arxiv', 'google scholar', 'pubmed'],
     queryGeneratorPrompt: prompts.academicSearchRetrieverPrompt,
@@ -190,8 +199,21 @@ export const handleMessage = async (
 
       if (handler) {
         try {
+          let searchContent = parsedMessage.content;
+          
+          // Parse restaurant search content if it's in JSON format
+          if (parsedWSMessage.focusMode === 'restaurantSearch') {
+            try {
+              const restaurantInfo = JSON.parse(parsedMessage.content);
+              searchContent = `Find information about ${restaurantInfo.restaurant_name} restaurant at ${restaurantInfo.address}`;
+            } catch (e) {
+              // If not JSON, use the content as is
+              logger.error('Failed to parse restaurant search JSON:', e);
+            }
+          }
+
           const emitter = await handler.searchAndAnswer(
-            parsedMessage.content,
+            searchContent,
             history,
             llm,
             embeddings,
